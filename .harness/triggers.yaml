@@ -1,0 +1,20 @@
+trigger:
+  name: push_to_develop_or_main
+  identifier: push_to_develop_or_main
+  enabled: true
+  orgIdentifier: default
+  projectIdentifier: subtrack_project
+  pipelineIdentifier: subtrack_serverless_pipeline
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: Push
+        spec:
+          connectorRef: account.github
+          autoAbortPreviousExecutions: true
+          repoName: p1
+          branchFilter:
+            type: Regex
+            pattern: "^(main|develop)$"

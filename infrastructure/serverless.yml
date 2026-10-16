@@ -1,0 +1,150 @@
+service: subtrack-api
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-northeast-2
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  environment:
+    DYNAMODB_TABLE: subtrack-${self:provider.stage}-subscriptions
+    JWT_SECRET: ${env:JWT_SECRET, 'subtrack-secret-key-12345'}
+    NODE_OPTIONS: '--enable-source-maps'
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/subtrack-${self:provider.stage}-subscriptions
+            - arn:aws:dynamodb:${self:provider.region}:*:table/subtrack-${self:provider.stage}-subscriptions/index/*
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3001
+    websocketPort: 3002
+    lambdaPort: 3003
+
+functions:
+  # Auth Functions
+  authRegister:
+    handler: src/functions/api/auth/register/handler.handler
+    events:
+      - httpApi:
+          path: /v1/auth/register
+          method: post
+
+  authLogin:
+    handler: src/functions/api/auth/login/handler.handler
+    events:
+      - httpApi:
+          path: /v1/auth/login
+          method: post
+
+  authRefresh:
+    handler: src/functions/api/auth/refresh/handler.handler
+    events:
+      - httpApi:
+          path: /v1/auth/refresh
+          method: post
+
+  # Subscription Functions
+  subList:
+    handler: src/functions/api/subscriptions/list/handler.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions
+          method: get
+
+  subCreate:
+    handler: src/functions/api/subscriptions/create/handler.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions
+          method: post
+
+  subGet:
+    handler: src/functions/api/subscriptions/get/handler.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions/{id}
+          method: get
+
+  subUpdate:
+    handler: src/functions/api/subscriptions/update/handler.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions/{id}
+          method: patch
+
+  subDelete:
+    handler: src/functions/api/subscriptions/delete/handler.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions/{id}
+          method: delete
+
+  # Analytics Functions
+  analyticsSummary:
+    handler: src/functions/api/analytics/summary/handler.handler
+    events:
+      - httpApi:
+          path: /v1/analytics/summary
+          method: get
+
+  analyticsTrend:
+    handler: src/functions/api/analytics/trend/handler.handler
+    events:
+      - httpApi:
+          path: /v1/analytics/trend
+          method: get
+
+  analyticsCategory:
+    handler: src/functions/api/analytics/category/handler.handler
+    events:
+      - httpApi:
+          path: /v1/analytics/category
+          method: get
+
+  # Settings Functions
+  settings:
+    handler: src/functions/api/settings/handler.handler
+    events:
+      - httpApi:
+          path: /v1/settings
+          method: get
+      - httpApi:
+          path: /v1/settings
+          method: patch
+
+  # Notifications Functions
+  notificationsList:
+    handler: src/functions/api/notifications/handler.handler
+    events:
+      - httpApi:
+          path: /v1/notifications
+          method: get
+      - httpApi:
+          path: /v1/notifications/{id}
+          method: patch
+
+  # Scheduled Event: Daily Billing Notifier
+  billingNotifier:
+    handler: src/functions/events/billing-notifier/handler.handler
+    events:
+      - schedule:
+          rate: cron(0 0 * * ? *) # 매일 오전 9시 KST (UTC 00:00)
+          description: "매일 결제 예정일 도래 시 알림 자동 발송"

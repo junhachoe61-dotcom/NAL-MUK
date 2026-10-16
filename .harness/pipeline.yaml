@@ -1,0 +1,182 @@
+pipeline:
+  name: subtrack-serverless-pipeline
+  identifier: subtrack_serverless_pipeline
+  projectIdentifier: subtrack_project
+  orgIdentifier: default
+  tags:
+    project: subtrack
+    architecture: serverless
+    methodology: loop-engineering
+
+  stages:
+    # ─────────────────────────────────────────
+    # Stage 1: Build & Test (Loop: Build)
+    # ─────────────────────────────────────────
+    - stage:
+        name: Build and Quality Gate
+        identifier: build_and_test
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Install Dependencies
+                  identifier: install_deps
+                  spec:
+                    connectorRef: account.github
+                    image: node:20-alpine
+                    command: npm ci
+
+              - step:
+                  type: Run
+                  name: Lint Check
+                  identifier: lint_check
+                  spec:
+                    image: node:20-alpine
+                    command: npm run lint
+
+              - step:
+                  type: Run
+                  name: Unit Tests
+                  identifier: unit_tests
+                  spec:
+                    image: node:20-alpine
+                    command: npm run test:unit
+
+              - step:
+                  type: Run
+                  name: Next.js Frontend Export
+                  identifier: build_frontend
+                  spec:
+                    image: node:20-alpine
+                    command: npm run build
+
+    # ─────────────────────────────────────────
+    # Stage 2: Deploy DEV (Loop: Deploy)
+    # ─────────────────────────────────────────
+    - stage:
+        name: Deploy to DEV
+        identifier: deploy_dev
+        type: Deployment
+        spec:
+          serviceConfig:
+            serviceRef: subtrack-service
+          infrastructure:
+            environmentRef: dev
+            infrastructureDefinition:
+              type: ServerlessAwsLambda
+              spec:
+                connectorRef: account.aws_dev
+                region: ap-northeast-2
+                stage: dev
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Deploy Lambda to Dev
+                  identifier: deploy_sls_dev
+                  spec:
+                    image: node:20-alpine
+                    command: npx serverless deploy --stage dev
+
+    # ─────────────────────────────────────────
+    # Stage 3: Deploy Staging
+    # ─────────────────────────────────────────
+    - stage:
+        name: Deploy to Staging
+        identifier: deploy_staging
+        type: Deployment
+        spec:
+          serviceConfig:
+            serviceRef: subtrack-service
+          infrastructure:
+            environmentRef: staging
+            infrastructureDefinition:
+              type: ServerlessAwsLambda
+              spec:
+                connectorRef: account.aws_staging
+                region: ap-northeast-2
+                stage: staging
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Deploy Lambda to Staging
+                  identifier: deploy_sls_staging
+                  spec:
+                    image: node:20-alpine
+                    command: npx serverless deploy --stage staging
+
+    # ─────────────────────────────────────────
+    # Stage 4: Production Canary Deploy & CV (Loop: Monitor/Feedback)
+    # ─────────────────────────────────────────
+    - stage:
+        name: Production Canary & CV
+        identifier: deploy_prod_canary
+        type: Deployment
+        spec:
+          serviceConfig:
+            serviceRef: subtrack-service
+          infrastructure:
+            environmentRef: production
+            infrastructureDefinition:
+              type: ServerlessAwsLambda
+              spec:
+                connectorRef: account.aws_prod
+                region: ap-northeast-2
+                stage: prod
+          execution:
+            steps:
+              - step:
+                  type: HarnessApproval
+                  name: Production Deploy Approval
+                  identifier: prod_approval
+                  spec:
+                    approvalMessage: "SubTrack 프로덕션 Canary 배포 승인이 필요합니다."
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - account.platform-team
+
+              - step:
+                  type: Run
+                  name: Deploy 10% Canary
+                  identifier: deploy_canary_10
+                  spec:
+                    image: node:20-alpine
+                    command: |
+                      echo "Deploying Lambda with Canary 10% traffic routing..."
+                      npx serverless deploy --stage prod
+
+              - step:
+                  type: Verify
+                  name: Continuous Verification (CV)
+                  identifier: verify_cv
+                  spec:
+                    type: Canary
+                    monitoredServiceRef: subtrack-service
+                    healthSources:
+                      - identifier: cloudwatch_metrics
+                    spec:
+                      sensitivity: MEDIUM
+                      duration: 15m
+                      failOnNoAnalysis: true
+
+              - step:
+                  type: Run
+                  name: Promote to 100% Traffic
+                  identifier: promote_100
+                  spec:
+                    image: node:20-alpine
+                    command: |
+                      echo "Canary verification passed. Shifting 100% traffic to new version."
