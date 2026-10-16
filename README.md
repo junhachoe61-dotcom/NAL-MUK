@@ -6,7 +6,7 @@
 ---
 
 ## 🌐 인터랙티브 라이브 데모 (웹 브라우저)
-- **온라인 웹 프리뷰 바로가기**: [SubTrack 인터랙티브 프리뷰 열기](https://junhachoe61-dotcom.github.io/-/subtrack_preview.html)
+- **온라인 웹 프리뷰 바로가기**: [SubTrack 인터랙티브 프리뷰 열기](https://junhachoe61-dotcom.github.io/NAL-MUK/subtrack_preview.html)
 - **로컬 데모 실행**: 저장소 내 [`subtrack_preview.html`](subtrack_preview.html) 또는 [`index.html`](index.html)을 더블 클릭하면 브라우저에서 즉시 작동합니다.
 
 ---
